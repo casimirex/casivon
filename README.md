@@ -56,18 +56,20 @@ A production-ready ERP built with clean architecture principles.
 ## Quick Start
 
 ```bash
-# 1. Start infrastructure (minio only if you want receipt upload)
+make setup      # copies backend/.env from the template, installs frontend deps
+make up         # Postgres and Redis  (make up-all adds Mailpit and MinIO)
+make backend    # the API on :8080 — applies its migrations on boot
+make frontend   # in another terminal: the web app on :3000
+```
+
+`make` on its own lists every target, and nothing is hidden — each recipe is a
+command you could have typed yourself. `make -n <target>` prints one without
+running it. The equivalent by hand:
+
+```bash
 docker compose up -d postgres redis minio
-
-# 2. Start the backend — it applies migrations itself on boot
-cd backend
-cp .env.example .env
-cargo run
-
-# 3. Start the frontend (new terminal)
-cd ../frontend
-npm install
-npm run dev
+cd backend  && cp .env.example .env && cargo run
+cd frontend && npm install && npm run dev
 ```
 
 Open http://localhost:3000 and create an account. **The first account registered
@@ -87,19 +89,42 @@ the application.
 ## Tests
 
 ```bash
-cd backend  && cargo test    # 166 unit + 281 integration tests
-cd frontend && npm test      # 150 tests: Zod schemas, line maths, components, store, pages
-cd frontend && npm run lint && npm run build
+make test           # 166 unit + 281 integration (backend), 150 (frontend)
+make backend-test   # or one side at a time
+make frontend-test
+make gate           # everything CI would run: both suites, tsc, eslint, both builds
 ```
 
 The backend integration tests in `backend/tests/` need Postgres running
-(`docker compose up -d postgres redis`) and `DATABASE_URL` set — `backend/.env`
+(`make up`) and `DATABASE_URL` set — `backend/.env`
 is picked up automatically. `tests/redis_revocation.rs` additionally needs
 Redis; everything else runs the token denylist in memory so the suite stays
 hermetic. Each test gets its own throwaway database from
 `#[sqlx::test]` with the migrations applied, then mounts the real router over it
 and drives it in-process, so tests share no state and can run in any order. The
 databases are named `_sqlx_test_*` and are cleaned up on the following run.
+
+## Make targets
+
+`make` lists them all. The ones worth knowing:
+
+| | |
+|---|---|
+| `make setup` | first run: `backend/.env` from the template, frontend dependencies |
+| `make up` / `up-all` | Postgres and Redis / plus Mailpit and MinIO |
+| `make down` / `restart` / `ps` / `logs` | the stack, keeping data (`make logs SERVICE=postgres` for one) |
+| `make backend` / `frontend` | run each side |
+| `make test` / `gate` | both suites / everything CI would run |
+| `make generate` | regenerate `openapi.json` and the frontend's types from the handlers |
+| `make db-shell` | `psql` into the running database |
+| `make db-backup` | dump to `~/casivon-backups`, outside the repo so it cannot be committed |
+| `make db-restore FILE=…` | load a dump back in |
+| `make db-reset` | drop and recreate the database, then let the backend migrate it |
+| `make clean` | stop the stack **and delete its volumes** |
+
+The three that destroy data — `clean`, `db-reset`, `db-restore` — ask for a typed
+`yes` first. `make db-backup` before any of them; the dumps are timestamped and
+gzipped beside the plain file.
 
 ## Development Guide
 
