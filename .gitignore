@@ -1,8 +1,13 @@
 # Rust
 backend/target/
-backend/Cargo.lock
 backend/.env
-backend/.sqlx/
+
+# Cargo.lock and backend/.sqlx/ are deliberately NOT ignored. This is an
+# application, not a library: the lockfile is what makes a build reproducible,
+# so everyone and CI compile the same dependency versions. And `.sqlx/` exists
+# precisely so a build can happen without a database to check queries against —
+# ignoring it would defeat the one thing it is for. `frontend/package-lock.json`
+# has always been committed, and this keeps the two sides consistent.
 
 # Node
 frontend/node_modules/
