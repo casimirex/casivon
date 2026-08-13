@@ -1,0 +1,11 @@
+pub mod auth;
+pub mod crm;
+pub mod sales;
+pub mod inventory;
+pub mod purchasing;
+pub mod accounting;
+pub mod files;
+pub mod hr;
+pub mod projects;
+pub mod search;
+pub mod settings;

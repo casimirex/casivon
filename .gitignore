@@ -1,0 +1,26 @@
+# Rust
+backend/target/
+backend/Cargo.lock
+backend/.env
+backend/.sqlx/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.env
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

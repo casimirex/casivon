@@ -1,0 +1,119 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: casivon-postgres
+    environment:
+      POSTGRES_USER: erp
+      POSTGRES_PASSWORD: erp_secret
+      POSTGRES_DB: erp_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # NOTE: migrations are deliberately NOT mounted into
+      # /docker-entrypoint-initdb.d. The backend runs `sqlx::migrate!` at
+      # startup; letting Postgres apply the same files first leaves sqlx with an
+      # empty _sqlx_migrations table and it fails on "relation already exists".
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erp -d erp_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: casivon-redis
+    ports:
+      - "6379:6379"
+
+  # Catches outgoing mail instead of delivering it, so password reset links can
+  # be clicked in development without wiring up a real relay. Web UI on 8025,
+  # SMTP on 1025 with no TLS and no credentials.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: casivon-mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  # Object storage for uploaded receipts. S3-compatible, so the backend speaks
+  # the same protocol here as it would to a managed bucket in production.
+  # API on 9000, browser console on 9001 (root user / password below).
+  #
+  # The bucket is not created here: the backend creates it at start-up if it is
+  # missing, which is a check a real deployment needs anyway.
+  minio:
+    image: minio/minio:latest
+    container_name: casivon-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: erp_minio
+      MINIO_ROOT_PASSWORD: erp_minio_secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: casivon-backend
+    environment:
+      DATABASE_URL: postgres://erp:erp_secret@postgres:5432/erp_db
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: change_this_in_production_very_long_secret_key_32bytes
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_ENCRYPTION: none
+      SMTP_FROM: ERP System <no-reply@erp.local>
+      # Two endpoints because a presigned URL's signature covers the host it was
+      # signed for. The API uploads through the compose network name; the link
+      # it hands a browser has to be signed against the address that browser can
+      # actually resolve.
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      S3_BUCKET: erp-receipts
+      S3_ACCESS_KEY: erp_minio
+      S3_SECRET_KEY: erp_minio_secret
+      RUST_LOG: info
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mailpit:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: cargo run
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: casivon-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_API_URL: http://localhost:8080
+    command: npm run dev -- --host
+
+volumes:
+  postgres_data:
+  minio_data:
